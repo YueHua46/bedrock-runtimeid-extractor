@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bedrock Runtime Map 提取器</title>
+  <style>
+    :root {
+      --bg: #1a1b26;
+      --surface: #24283b;
+      --text: #c0caf5;
+      --dim: #565f89;
+      --accent: #7aa2f7;
+      --green: #9ece6a;
+      --red: #f7768e;
+      --yellow: #e0af68;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .container { max-width: 56rem; margin: 0 auto; }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 0 0 1rem 0;
+    }
+    .form {
+      display: grid;
+      grid-template-columns: 1fr 8rem 1fr auto;
+      gap: 0.75rem;
+      align-items: end;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 640px) {
+      .form { grid-template-columns: 1fr 1fr; }
+    }
+    label {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--dim);
+      margin-bottom: 0.25rem;
+    }
+    input, select, button {
+      font: inherit;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--dim);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    button {
+      cursor: pointer;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.secondary {
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .status {
+      font-size: 0.875rem;
+      margin-bottom: 0.75rem;
+      min-height: 1.25rem;
+    }
+    .status.loading { color: var(--yellow); }
+    .status.error { color: var(--red); }
+    .status.success { color: var(--green); }
+    .preview-wrap {
+      background: var(--surface);
+      border: 1px solid var(--dim);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      background: rgba(0,0,0,0.2);
+      font-size: 0.75rem;
+      color: var(--dim);
+    }
+    .preview-header strong { color: var(--text); }
+    pre {
+      margin: 0;
+      padding: 1rem;
+      overflow: auto;
+      max-height: 20rem;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .copy-btn {
+      margin-top: 0.5rem;
+    }
+    .hint {
+      font-size: 0.75rem;
+      color: var(--dim);
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Bedrock Runtime Map 提取器</h1>
+    <p class="hint">配置服务器 IP、端口并选择 Bedrock 版本，从服务器拉取 itemstates 生成 runtime_map.js，可预览并一键复制后替换旧 map。</p>
+
+    <div class="form">
+      <div>
+        <label for="host">服务器 IP</label>
+        <input id="host" type="text" value="127.0.0.1" placeholder="127.0.0.1" />
+      </div>
+      <div>
+        <label for="port">端口</label>
+        <input id="port" type="number" value="19132" min="1" max="65535" placeholder="19132" />
+      </div>
+      <div>
+        <label for="version">Bedrock 版本</label>
+        <select id="version">
+          <option value="">加载中…</option>
+        </select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button type="button" id="extract">提取 runtimeMap</button>
+      </div>
+    </div>
+
+    <div class="status" id="status" aria-live="polite"></div>
+
+    <div class="preview-wrap" id="previewWrap" hidden>
+      <div class="preview-header">
+        <strong>脚本预览</strong>
+        <span id="previewMeta"></span>
+      </div>
+      <pre id="preview"></pre>
+      <div style="padding: 0 1rem 1rem;">
+        <button type="button" class="copy-btn secondary" id="copyFull">复制全部内容</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const hostEl = document.getElementById("host");
+    const portEl = document.getElementById("port");
+    const versionEl = document.getElementById("version");
+    const extractBtn = document.getElementById("extract");
+    const statusEl = document.getElementById("status");
+    const previewWrap = document.getElementById("previewWrap");
+    const previewEl = document.getElementById("preview");
+    const previewMeta = document.getElementById("previewMeta");
+    const copyFullBtn = document.getElementById("copyFull");
+
+    const PREVIEW_LINES = 80;
+
+    async function loadVersions() {
+      try {
+        const r = await fetch("/api/versions");
+        const data = await r.json();
+        const list = data.bedrock || [];
+        versionEl.innerHTML = "";
+        const opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = "请选择版本";
+        versionEl.appendChild(opt0);
+        list.forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v.replace("bedrock_", "");
+          versionEl.appendChild(opt);
+        });
+        if (list.includes("bedrock_1.26.0")) {
+          versionEl.value = "bedrock_1.26.0";
+        } else if (list.length) {
+          versionEl.selectedIndex = 1;
+        }
+      } catch (e) {
+        statusEl.textContent = "加载版本列表失败: " + (e.message || e);
+        statusEl.className = "status error";
+      }
+    }
+
+    function setStatus(msg, type) {
+      statusEl.textContent = msg;
+      statusEl.className = "status " + (type || "");
+    }
+
+    extractBtn.addEventListener("click", async () => {
+      const host = (hostEl.value || "").trim() || "127.0.0.1";
+      const port = parseInt(portEl.value, 10);
+      const versionTag = (versionEl.value || "").trim();
+      if (!versionTag) {
+        setStatus("请先选择 Bedrock 版本", "error");
+        return;
+      }
+      if (!port || port < 1 || port > 65535) {
+        setStatus("请输入有效端口（1–65535）", "error");
+        return;
+      }
+
+      extractBtn.disabled = true;
+      setStatus("正在连接服务器并拉取 itemstates，请稍候…", "loading");
+      previewWrap.hidden = true;
+
+      try {
+        const r = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ host, port, versionTag }),
+        });
+        const data = await r.json();
+
+        if (data.ok && typeof data.content === "string") {
+          const lines = data.content.split("\n");
+          let preview = lines.slice(0, PREVIEW_LINES).join("\n");
+          if (lines.length > PREVIEW_LINES) {
+            preview += "\n\n// ... 共 " + lines.length + " 行，点击下方「复制全部内容」获取完整脚本";
+          }
+          previewEl.textContent = preview;
+          previewMeta.textContent = "共 " + (data.count ?? 0) + " 条映射";
+          previewWrap.hidden = false;
+          previewWrap.dataset.fullContent = data.content;
+          setStatus("提取成功，可预览并复制下方内容替换旧 map。", "success");
+        } else {
+          setStatus("提取失败: " + (data.error || "未知错误"), "error");
+        }
+      } catch (e) {
+        setStatus("请求失败: " + (e.message || e), "error");
+      } finally {
+        extractBtn.disabled = false;
+      }
+    });
+
+    copyFullBtn.addEventListener("click", () => {
+      const full = previewWrap.dataset.fullContent;
+      if (!full) return;
+      navigator.clipboard.writeText(full).then(
+        () => {
+          const t = copyFullBtn.textContent;
+          copyFullBtn.textContent = "已复制";
+          setTimeout(() => { copyFullBtn.textContent = t; }, 1500);
+        },
+        () => setStatus("复制失败，请手动选择预览区下方全文复制", "error")
+      );
+    });
+
+    loadVersions();
+  </script>
+</body>
+</html>
