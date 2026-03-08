@@ -6,7 +6,11 @@
 
 ```bash
 bun install
+# 或
+npm install
 ```
+
+若在 Linux 上运行 `npm run server` 时出现 **Could not locate the bindings file**（找不到 `node-raknet.node`），是因为依赖 `bedrock-protocol` 默认使用 C++ 原生模块 `raknet-native`，而当前环境没有可用的预编译二进制（例如 Node 24 或部分 Linux 发行版）。本仓库已通过 `patches/` 做了修复：在无法加载 `raknet-native` 时会自动改用纯 JS 实现 `jsp-raknet`，无需单独安装编译工具。若你希望使用原生实现以获取更好性能，可安装构建依赖后执行 `npm rebuild raknet-native`（需 Node 18/20 等有预编译的版本或本机有 g++/make）。
 
 ## 用法
 

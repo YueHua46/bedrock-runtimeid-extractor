@@ -5,9 +5,11 @@
   "scripts": {
     "extract": "node scripts/run-extract.cjs",
     "server": "tsx server.ts",
-    "start": "tsx server.ts"
+    "start": "tsx server.ts",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
+    "patch-package": "^8.0.0",
     "@types/bun": "latest",
     "tsx": "^4.19.0"
   },
