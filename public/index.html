@@ -117,6 +117,35 @@
       color: var(--dim);
       margin-top: 1rem;
     }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 1.5rem;
+      transform: translateX(-50%);
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      background: rgba(36, 40, 59, 0.96);
+      color: var(--text);
+      border: 1px solid var(--dim);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+      z-index: 999;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-4px);
+    }
+    .toast-success {
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .toast-error {
+      border-color: var(--red);
+      color: var(--red);
+    }
   </style>
 </head>
 <body>
@@ -158,6 +187,7 @@
       </div>
     </div>
   </div>
+  <div id="toast" class="toast" aria-live="polite"></div>
 
   <script>
     const hostEl = document.getElementById("host");
@@ -169,8 +199,20 @@
     const previewEl = document.getElementById("preview");
     const previewMeta = document.getElementById("previewMeta");
     const copyFullBtn = document.getElementById("copyFull");
+    const toastEl = document.getElementById("toast");
 
     const PREVIEW_LINES = 80;
+
+    let toastTimer = null;
+    function showToast(msg, type) {
+      if (!toastEl) return;
+      toastEl.textContent = msg;
+      toastEl.className = "toast show" + (type ? " toast-" + type : "");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.className = "toast";
+      }, 1800);
+    }
 
     async function loadVersions() {
       try {
@@ -252,15 +294,45 @@
 
     copyFullBtn.addEventListener("click", () => {
       const full = previewWrap.dataset.fullContent;
-      if (!full) return;
-      navigator.clipboard.writeText(full).then(
-        () => {
-          const t = copyFullBtn.textContent;
-          copyFullBtn.textContent = "已复制";
-          setTimeout(() => { copyFullBtn.textContent = t; }, 1500);
-        },
-        () => setStatus("复制失败，请手动选择预览区下方全文复制", "error")
-      );
+      if (!full) {
+        setStatus("当前暂无可复制内容，请先完成一次提取。", "error");
+        showToast("暂无可复制内容，请先提取。", "error");
+        return;
+      }
+
+      const onSuccess = () => {
+        const t = copyFullBtn.textContent;
+        copyFullBtn.textContent = "已复制";
+        showToast("已复制全部内容到剪贴板", "success");
+        setTimeout(() => {
+          copyFullBtn.textContent = t;
+        }, 1500);
+      };
+
+      const onError = () => {
+        setStatus("复制失败，请手动选择预览区下方全文复制", "error");
+        showToast("复制失败，请手动复制。", "error");
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(full).then(onSuccess, onError);
+      } else {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = full;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          if (ok) onSuccess();
+          else onError();
+        } catch {
+          onError();
+        }
+      }
     });
 
     loadVersions();
