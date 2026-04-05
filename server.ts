@@ -6,7 +6,11 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import minecraftData from "minecraft-data";
 import { EXTRA_BEDROCK_VERSIONS } from "./lib/extra-bedrock-versions";
-import { extractRuntimeMap, runtimeMapToJsContent } from "./lib/extract";
+import {
+  bedrockVersionDropdownLabel,
+  extractRuntimeMap,
+  runtimeMapToJsContent,
+} from "./lib/extract";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
@@ -51,10 +55,15 @@ const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
   const pathname = url.split("?")[0];
 
-  // GET /api/versions -> 可用 Bedrock 版本列表（带 bedrock_ 前缀）
+  // GET /api/versions -> 可用 Bedrock 版本列表（带 bedrock_ 前缀）；labels[tag] 为对用户展示文案（可与实际 mc-data key 不同，如 1.26.10 vs 26.10）
   if (pathname === "/api/versions" && req.method === "GET") {
     const versions = getBedrockVersions();
-    sendJson(res, 200, { bedrock: versions.map((v) => "bedrock_" + v) });
+    const bedrock = versions.map((v) => "bedrock_" + v);
+    const labels: Record<string, string> = {};
+    for (const v of versions) {
+      labels["bedrock_" + v] = bedrockVersionDropdownLabel(v);
+    }
+    sendJson(res, 200, { bedrock, labels });
     return;
   }
 

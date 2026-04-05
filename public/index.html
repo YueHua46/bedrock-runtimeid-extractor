@@ -223,6 +223,7 @@
         const r = await fetch("/api/versions");
         const data = await r.json();
         const list = data.bedrock || [];
+        const labels = data.labels && typeof data.labels === "object" ? data.labels : {};
         versionEl.innerHTML = "";
         const opt0 = document.createElement("option");
         opt0.value = "";
@@ -231,7 +232,8 @@
         list.forEach((v) => {
           const opt = document.createElement("option");
           opt.value = v;
-          opt.textContent = v.replace("bedrock_", "");
+          opt.textContent = labels[v] || v.replace("bedrock_", "");
+          opt.title = v;
           versionEl.appendChild(opt);
         });
         if (list.includes("bedrock_26.10")) {

@@ -23,6 +23,20 @@ const BEDROCK_GAME_VERSION_TO_DATA_KEY: Record<string, string> = {
   "1.26.10": "26.10",
 };
 
+/** mc-data 目录名 → 下拉框等对用户展示的版本号（与游戏/ping 常见写法对齐） */
+const BEDROCK_DATA_KEY_TO_DISPLAY_VERSION: Record<string, string> =
+  Object.fromEntries(
+    Object.entries(BEDROCK_GAME_VERSION_TO_DATA_KEY).map(([game, dataKey]) => [
+      dataKey,
+      game,
+    ]),
+  );
+
+/** `26.10` → `1.26.10`；无别名时返回原 key（如 `1.26.0`） */
+export function bedrockVersionDropdownLabel(mcDataVersionKey: string): string {
+  return BEDROCK_DATA_KEY_TO_DISPLAY_VERSION[mcDataVersionKey] ?? mcDataVersionKey;
+}
+
 function mergedBedrockVersionKeys(): string[] {
   return [...new Set([...(supportedBedrock ?? []), ...EXTRA_BEDROCK_VERSIONS])];
 }
