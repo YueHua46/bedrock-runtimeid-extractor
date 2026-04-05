@@ -5,6 +5,7 @@ import { join, extname } from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import minecraftData from "minecraft-data";
+import { EXTRA_BEDROCK_VERSIONS } from "./lib/extra-bedrock-versions";
 import { extractRuntimeMap, runtimeMapToJsContent } from "./lib/extract";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +23,10 @@ function getBedrockVersions(): string[] {
   const versions = (
     minecraftData as { supportedVersions?: { bedrock?: string[] } }
   ).supportedVersions?.bedrock;
-  return versions ?? [];
+  const base = versions ?? [];
+  const merged = [...new Set([...base, ...EXTRA_BEDROCK_VERSIONS])];
+  merged.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  return merged;
 }
 
 function send(

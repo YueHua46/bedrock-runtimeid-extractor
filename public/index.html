@@ -81,7 +81,11 @@
       min-height: 1.25rem;
     }
     .status.loading { color: var(--yellow); }
-    .status.error { color: var(--red); }
+    .status.error {
+      color: var(--red);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .status.success { color: var(--green); }
     .preview-wrap {
       background: var(--surface);
@@ -230,7 +234,9 @@
           opt.textContent = v.replace("bedrock_", "");
           versionEl.appendChild(opt);
         });
-        if (list.includes("bedrock_1.26.0")) {
+        if (list.includes("bedrock_26.10")) {
+          versionEl.value = "bedrock_26.10";
+        } else if (list.includes("bedrock_1.26.0")) {
           versionEl.value = "bedrock_1.26.0";
         } else if (list.length) {
           versionEl.selectedIndex = 1;
