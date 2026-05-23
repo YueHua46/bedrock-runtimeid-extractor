@@ -1,3 +1,16 @@
+diff --git a/node_modules/bedrock-protocol/src/client.js b/node_modules/bedrock-protocol/src/client.js
+index d1ff44d..315fb4c 100644
+--- a/node_modules/bedrock-protocol/src/client.js
++++ b/node_modules/bedrock-protocol/src/client.js
+@@ -145,7 +145,7 @@ class Client extends Connection {
+     const chain = [
+       this.clientIdentityChain, // JWT we generated for auth
+       ...this.accessToken // Mojang + Xbox JWT from auth
+-    ]
++    ].filter(Boolean)
+ 
+     let encodedChain
+     if (this.features.newLoginIdentityFields) { // 1.21.90+
 diff --git a/node_modules/bedrock-protocol/src/createClient.js b/node_modules/bedrock-protocol/src/createClient.js
 index 9d14134..50dd487 100644
 --- a/node_modules/bedrock-protocol/src/createClient.js

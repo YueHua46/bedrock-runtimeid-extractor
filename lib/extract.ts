@@ -17,7 +17,8 @@ const supportedBedrock = (
 ).supportedVersions?.bedrock;
 
 /**
- * 游戏内/ping 常见写法 → minecraft-data 数据目录名（mc-data 3.109+ 中 1.26.10 使用 `26.10`，协议 944）。
+ * 游戏内/ping 常见写法 → minecraft-data 数据目录名。
+ * 旧版 mc-data 曾用过 `26.10` 这类目录名；新版若已有标准 x.y.z key，会优先使用标准 key。
  */
 const BEDROCK_GAME_VERSION_TO_DATA_KEY: Record<string, string> = {
   "1.26.10": "26.10",
@@ -32,7 +33,7 @@ const BEDROCK_DATA_KEY_TO_DISPLAY_VERSION: Record<string, string> =
     ]),
   );
 
-/** `26.10` → `1.26.10`；无别名时返回原 key（如 `1.26.0`） */
+/** 将 mc-data 的特殊目录名转成面向用户的版本号；无别名时返回原 key（如 `1.26.20`） */
 export function bedrockVersionDropdownLabel(mcDataVersionKey: string): string {
   return BEDROCK_DATA_KEY_TO_DISPLAY_VERSION[mcDataVersionKey] ?? mcDataVersionKey;
 }
@@ -41,7 +42,7 @@ function mergedBedrockVersionKeys(): string[] {
   return [...new Set([...(supportedBedrock ?? []), ...EXTRA_BEDROCK_VERSIONS])];
 }
 
-/** ping 解析的版本号是否与 resolve 后的 mc-data 版本名等价（含 1.26.10 ↔ 26.10） */
+/** ping 解析的版本号是否与 resolve 后的 mc-data 版本名等价（含历史特殊 key） */
 function parsedMatchesResolvedData(
   parsed: string | null,
   resolvedNoPrefix: string | null,
@@ -256,6 +257,7 @@ export async function extractRuntimeMap(
   host: string,
   port: number,
   versionTag: string,
+  authMode: "offline" | "online" = "offline",
 ): Promise<Record<string, number>> {
   const serverAd = await fetchServerAdvertisement(host, port);
   const suggestedTag = suggestedVersionTag(serverAd?.version);
@@ -286,20 +288,73 @@ export async function extractRuntimeMap(
     console.log(
       `版本回落: 你选择的是 ${requestedTag}，但本地 minecraft-data ${inMcData ? "未通过校验" : "没有这一档的协议/注册表数据"}，因此无法在握手时使用该标签。` +
         `resolveBedrockVersion 已改为实际用于 Registry 与 createClient 的 ${resolvedTag}（游戏版本号 ${connectVersion}）。` +
-        `在「额外版本」里填写 1.26.10 只会出现在下拉候选里，不会向 npm 包装进 1.26.10 的协议定义；要消除 outdated_client 需升级 bedrock-protocol / minecraft-data 等，直至 ${requestedTag} 在库里可用。`,
+        `在「额外版本」里填写新小版本只会出现在下拉候选里，不会向 npm 包装进对应协议定义；要消除 outdated_client 需升级 bedrock-protocol / minecraft-data 等，直至 ${requestedTag} 在库里可用。`,
     );
   }
   const registry = Registry(resolvedTag);
-  const client = createClient({
+  const connectProtocol = (
+    minecraftData(resolvedTag)?.version as { version?: number } | undefined
+  )?.version;
+  const clientOptions = {
     host,
     port,
     version:
       connectVersion as import("bedrock-protocol").ClientOptions["version"],
     username: "runtime_extractor_bot",
-    offline: true,
-  });
+    offline: authMode !== "online",
+    authTitle: "0000000048183522",
+    deviceType: "Android",
+    flow: "live",
+    profilesFolder: ".bedrock-auth",
+    onMsaCode: (data: {
+      user_code?: string;
+      verification_uri?: string;
+      verification_uri_complete?: string;
+      message?: string;
+    }) => {
+      console.log("需要 Microsoft/Xbox 登录授权。");
+      if (data.message) console.log(data.message);
+      if (data.verification_uri) console.log("打开: " + data.verification_uri);
+      if (data.user_code) console.log("输入代码: " + data.user_code);
+      if (data.verification_uri_complete)
+        console.log("或直接打开: " + data.verification_uri_complete);
+    },
+  } as import("bedrock-protocol").ClientOptions & {
+    deviceType?: string;
+    flow?: string;
+    profilesFolder?: string;
+    onMsaCode?: (data: {
+      user_code?: string;
+      verification_uri?: string;
+      verification_uri_complete?: string;
+      message?: string;
+    }) => void;
+  };
+  const client = createClient(clientOptions);
 
   return new Promise((resolve, reject) => {
+    client.on("loggingIn", () => {
+      const c = client as unknown as {
+        clientIdentityChain?: string;
+        accessToken?: string[];
+        multiplayerToken?: string;
+        features?: { newLoginIdentityFields?: boolean };
+        options?: { protocolVersion?: number; offline?: boolean };
+      };
+      console.log(
+        "登录包摘要: " +
+          [
+            `newLoginIdentityFields=${c.features?.newLoginIdentityFields}`,
+            `offline=${c.options?.offline}`,
+            `protocol=${c.options?.protocolVersion}`,
+            `clientIdentityChain=${c.clientIdentityChain ? "yes" : "no"}`,
+            `accessTokenCount=${c.accessToken?.length ?? 0}`,
+            `multiplayerToken=${c.multiplayerToken ? "yes" : "no"}`,
+            "authTitle=MinecraftAndroid",
+          ].join(" | "),
+      );
+    });
+
     function finishWithItemstates(
       packet: Record<string, unknown>,
       itemstates: unknown[],
@@ -361,10 +416,15 @@ export async function extractRuntimeMap(
       const isOutdatedServer = kickMatches(reason, msg, /outdated_server/i);
       const isOutdatedClient = kickMatches(reason, msg, /outdated_client/i);
       let hint = "";
-      if (isNotAuth)
+      if (isNotAuth) {
         hint =
-          "请将 server.properties 中 online-mode 设为 false 后重启服务器。";
-      else if (isOutdatedServer)
+          authMode === "online"
+            ? "服务器拒绝了 Microsoft/Xbox 在线认证，请确认终端里的设备码登录已完成，且登录账号可进入该服务器。"
+            : "服务器拒绝了离线登录认证。当前 1.26.x 的 bedrock-protocol 离线登录在上游也有未解决的兼容问题；请改用页面里的 Microsoft/Xbox 在线登录模式再试，或用 DEBUG=minecraft-protocol 抓 Auth chain 日志继续定位离线链。";
+        if (serverAd?.protocol != null) {
+          hint += ` 当前服务器协议号为 ${serverAd.protocol}，本工具使用 ${resolvedTag}${connectProtocol != null ? ` / protocol ${connectProtocol}` : ""}。`;
+        }
+      } else if (isOutdatedServer)
         hint =
           suggestedTag && serverAd?.version
             ? `目标服务器游戏版本 ${serverAd.version}，建议匹配协议: ${suggestedTag}${!hasExact && resolvedServerVer ? `（${parsedRaw ?? ""} 无精确 mc-data，已回落到 ${resolvedServerVer}）` : ""}。若仍断开说明当前 bedrock-protocol 与服务器协议不一致，请降级/升级依赖或换用与服主一致的版本标签。`
@@ -378,8 +438,7 @@ export async function extractRuntimeMap(
           hint += ` 你选了 ${reqT}，但本地无 mc-data，已在 resolveBedrockVersion 中回落到 ${resolvedTag}，所以握手仍是旧协议；`;
         }
         if (proto != null) hint += ` 服务器 ping 协议号为 ${proto}。`;
-        hint +=
-          " 解决办法：升级依赖直至 `minecraft-data` 中存在可用的 `bedrock_1.26.10`（且 bedrock-protocol 支持对应 protocol_version），届时 resolve 将不再落到 1.26.0。";
+        hint += ` 解决办法：升级依赖直至 \`minecraft-data\` 中存在可用的 \`${reqT}\`（且 bedrock-protocol 支持对应 protocol_version），届时 resolve 将不再落到 ${resolvedTag}。`;
       } else hint = "请根据上方 DisconnectFailReason / message 与服务器日志进一步排查。";
 
       reject(

@@ -34,7 +34,7 @@
     }
     .form {
       display: grid;
-      grid-template-columns: 1fr 8rem 1fr auto;
+      grid-template-columns: 1fr 8rem 1fr 10rem auto;
       gap: 0.75rem;
       align-items: end;
       flex-wrap: wrap;
@@ -173,6 +173,13 @@
         </select>
       </div>
       <div>
+        <label for="authMode">登录模式</label>
+        <select id="authMode">
+          <option value="offline">离线</option>
+          <option value="online">Microsoft/Xbox</option>
+        </select>
+      </div>
+      <div>
         <label>&nbsp;</label>
         <button type="button" id="extract">提取 runtimeMap</button>
       </div>
@@ -197,6 +204,7 @@
     const hostEl = document.getElementById("host");
     const portEl = document.getElementById("port");
     const versionEl = document.getElementById("version");
+    const authModeEl = document.getElementById("authMode");
     const extractBtn = document.getElementById("extract");
     const statusEl = document.getElementById("status");
     const previewWrap = document.getElementById("previewWrap");
@@ -236,8 +244,12 @@
           opt.title = v;
           versionEl.appendChild(opt);
         });
-        if (list.includes("bedrock_26.10")) {
-          versionEl.value = "bedrock_26.10";
+        if (list.includes("bedrock_1.26.23")) {
+          versionEl.value = "bedrock_1.26.23";
+        } else if (list.includes("bedrock_1.26.20")) {
+          versionEl.value = "bedrock_1.26.20";
+        } else if (list.includes("bedrock_1.26.10")) {
+          versionEl.value = "bedrock_1.26.10";
         } else if (list.includes("bedrock_1.26.0")) {
           versionEl.value = "bedrock_1.26.0";
         } else if (list.length) {
@@ -258,6 +270,7 @@
       const host = (hostEl.value || "").trim() || "127.0.0.1";
       const port = parseInt(portEl.value, 10);
       const versionTag = (versionEl.value || "").trim();
+      const authMode = (authModeEl.value || "offline").trim();
       if (!versionTag) {
         setStatus("请先选择 Bedrock 版本", "error");
         return;
@@ -268,14 +281,14 @@
       }
 
       extractBtn.disabled = true;
-      setStatus("正在连接服务器并拉取 itemstates，请稍候…", "loading");
+      setStatus(authMode === "online" ? "正在连接服务器；若首次使用在线登录，请查看终端里的 Microsoft 设备码…" : "正在连接服务器并拉取 itemstates，请稍候…", "loading");
       previewWrap.hidden = true;
 
       try {
         const r = await fetch("/api/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ host, port, versionTag }),
+          body: JSON.stringify({ host, port, versionTag, authMode }),
         });
         const data = await r.json();
 

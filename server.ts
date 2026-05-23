@@ -55,7 +55,7 @@ const server = createServer(async (req, res) => {
   const url = req.url ?? "/";
   const pathname = url.split("?")[0];
 
-  // GET /api/versions -> 可用 Bedrock 版本列表（带 bedrock_ 前缀）；labels[tag] 为对用户展示文案（可与实际 mc-data key 不同，如 1.26.10 vs 26.10）
+  // GET /api/versions -> 可用 Bedrock 版本列表（带 bedrock_ 前缀）；labels[tag] 为对用户展示文案（兼容 mc-data 的历史特殊 key）
   if (pathname === "/api/versions" && req.method === "GET") {
     const versions = getBedrockVersions();
     const bedrock = versions.map((v) => "bedrock_" + v);
@@ -75,7 +75,12 @@ const server = createServer(async (req, res) => {
       req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
       req.on("error", reject);
     });
-    let payload: { host?: string; port?: number; versionTag?: string };
+    let payload: {
+      host?: string;
+      port?: number;
+      versionTag?: string;
+      authMode?: string;
+    };
     try {
       payload = JSON.parse(body);
     } catch {
@@ -85,6 +90,7 @@ const server = createServer(async (req, res) => {
     const host = String(payload.host ?? "").trim() || "127.0.0.1";
     const port = Number(payload.port);
     const versionTag = String(payload.versionTag ?? "").trim();
+    const authMode = payload.authMode === "online" ? "online" : "offline";
     if (!port || port < 1 || port > 65535) {
       sendJson(res, 400, { ok: false, error: "端口无效（1–65535）" });
       return;
@@ -94,7 +100,12 @@ const server = createServer(async (req, res) => {
       return;
     }
     try {
-      const typeToRuntime = await extractRuntimeMap(host, port, versionTag);
+      const typeToRuntime = await extractRuntimeMap(
+        host,
+        port,
+        versionTag,
+        authMode,
+      );
       const content = runtimeMapToJsContent(typeToRuntime);
       sendJson(res, 200, {
         ok: true,
